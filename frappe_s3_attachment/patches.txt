@@ -1,0 +1,3 @@
+[pre_model_sync]
+frappe_s3_attachment.frappe_s3_attachment.patches.update_file_url 
+[post_model_sync]
