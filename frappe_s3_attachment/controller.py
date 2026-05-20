@@ -15,7 +15,39 @@ from botocore.exceptions import ClientError
 import frappe
 from urllib.parse import urljoin
 import magic
+from frappe.utils import cint
 URL_PREFIXES = ("http://", "https://")
+
+
+def is_s3_upload_disabled():
+    try:
+        return cint(frappe.db.get_single_value("S3 File Attachment", "disable_s3_upload"))
+    except Exception:
+        return 0
+
+
+def validate_s3_settings(settings):
+    missing_fields = []
+
+    if not settings.bucket_name:
+        missing_fields.append("Bucket Name")
+    if not settings.region_name:
+        missing_fields.append("S3 Bucket Region Name")
+    if not settings.folder_name:
+        missing_fields.append("Folder Name")
+    if not settings.aws_key:
+        missing_fields.append("AWS Key")
+    if not settings.aws_secret:
+        missing_fields.append("AWS Secret")
+
+    if missing_fields:
+        frappe.throw(
+            frappe._(
+                "S3 upload is not configured. Either check 'Disable S3 Upload' in S3 File Attachment "
+                "or configure: {0}."
+            ).format(", ".join(missing_fields))
+        )
+
 
 class S3Operations(object):
 
@@ -28,6 +60,7 @@ class S3Operations(object):
             'S3 File Attachment',
             'S3 File Attachment',
         )
+        validate_s3_settings(self.s3_settings_doc)
         if (
             self.s3_settings_doc.aws_key and
             self.s3_settings_doc.aws_secret
@@ -198,6 +231,9 @@ def file_upload_to_s3(doc, method):
     """
     check and upload files to s3. the path check and
     """
+    if is_s3_upload_disabled():
+        return
+
     if doc.is_folder:
         return
     if doc.attached_to_doctype  in [ "Prepared Report",   "Repost Item Valuation", "Chart of Accounts Importer", "Bank Statement Import" ]:
@@ -298,6 +334,9 @@ def move_file(source_path, destination_path):
     shutil.move(source_path, destination_path)
 
 def upload_existing_files_s3(name, file_name):
+    if is_s3_upload_disabled():
+        return
+
     # Get single doctypes and extract names into a list
     single_doctypes = [doc['name'] for doc in frappe.get_list(
     'DocType',
@@ -400,6 +439,11 @@ def migrate_existing_files():
     Returns:
     str: A message indicating the success or failure of the migration process.
     """
+    if is_s3_upload_disabled():
+        return "S3 upload is disabled. Existing files were not migrated."
+
+    validate_s3_settings(frappe.get_doc("S3 File Attachment", "S3 File Attachment"))
+
     # get_all_files_from_public_folder_and_upload_to_s3
     msg = "Upload Successfull"
 
@@ -437,6 +481,7 @@ def migrate_existing_files():
 
 def delete_from_cloud(doc, method):
     """Delete file from s3"""
+
     s3 = S3Operations()
     s3.delete_from_s3(doc.content_hash)
 
