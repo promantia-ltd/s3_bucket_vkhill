@@ -33,8 +33,6 @@ def validate_s3_settings(settings):
         missing_fields.append("Bucket Name")
     if not settings.region_name:
         missing_fields.append("S3 Bucket Region Name")
-    if not settings.folder_name:
-        missing_fields.append("Folder Name")
     if not settings.aws_key:
         missing_fields.append("AWS Key")
     if not settings.aws_secret:
@@ -480,11 +478,15 @@ def migrate_existing_files():
             )
 
 def delete_from_cloud(doc, method):
-    """Delete file from s3"""
+    if is_s3_upload_disabled() or not doc.content_hash:
+        return
 
-    s3 = S3Operations()
+    try:
+        s3 = S3Operations()
+    except Exception:
+        return
+
     s3.delete_from_s3(doc.content_hash)
-
 
 @frappe.whitelist()
 def ping():
